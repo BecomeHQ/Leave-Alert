@@ -183,9 +183,9 @@ const processWeeklyLeaveAndAnnounce = async () => {
     try {
       console.log("Sending Slack message...", blocks);
 
-      // await axios.post(process.env.SLACK_API_URL, {
-      //   blocks: blocks,
-      // });
+      await axios.post(process.env.SLACK_API_URL, {
+        blocks: blocks,
+      });
     } catch (error) {
       console.error("Error sending Slack message:", error.message);
     }
@@ -196,7 +196,10 @@ const processWeeklyLeaveAndAnnounce = async () => {
   console.log("Weekly leave processing completed.");
 };
 
-// cron.schedule("0 9 * * 5", () => {
-// cron.schedule("0 9 * * 1,5", () => {
-processWeeklyLeaveAndAnnounce();
-// });
+cron.schedule("0 9 * * 1,5", () => {
+  processWeeklyLeaveAndAnnounce()
+    .then(() => {})
+    .catch((error) => {
+      console.error(error);
+    });
+});
