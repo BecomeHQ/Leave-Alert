@@ -9,16 +9,15 @@ const RAZORPAY_AUTH = {
 };
 
 const EMAILS = [
-  "afridha@become.team",
   "aleesha@become.team",
-  "arun@become.team",
   "harish@become.team",
+  "afridha@become.team",
+  "arun@become.team",
   "arjun@become.team",
   "ink@become.team",
   "juhi@become.team",
   "pooja@become.team",
   "preksha@become.team",
-  "rahul@become.team",
   "sam@become.team",
   "sid@become.team",
   "vasanth@become.team",
@@ -41,7 +40,6 @@ const EMAIL_MAP = {
   "juhi@become.team": "Juhi",
   "pooja@become.team": "Pooja",
   "preksha@become.team": "Preksha",
-  "rahul@become.team": "Rahul",
   "sam@become.team": "Samshritha",
   "sid@become.team": "Sid",
   "vasanth@become.team": "Vasanth",
@@ -62,74 +60,143 @@ const getCurrentDate = () => {
   return `${year}-${month}-${day}`;
 };
 
-const processAttendanceAndAnnounce = async () => {
-  const currentDate = getCurrentDate();
+const getNextWeekDates = () => {
+  const dates = [];
+  const today = new Date();
+
+  for (let i = 0; i < 7; i++) {
+    const nextDate = new Date(today);
+    nextDate.setDate(today.getDate() + i);
+
+    const year = nextDate.getFullYear();
+    const month = String(nextDate.getMonth() + 1).padStart(2, "0");
+    const day = String(nextDate.getDate()).padStart(2, "0");
+
+    dates.push({
+      fullDate: `${year}-${month}-${day}`,
+      formatted: `${day} ${nextDate.toLocaleString("default", {
+        month: "short",
+      })}, ${nextDate.toLocaleDateString("en-US", { weekday: "short" })}`,
+    });
+  }
+  return dates;
+};
+
+const processWeeklyLeaveAndAnnounce = async () => {
+  const nextWeekDates = getNextWeekDates();
+  const leaveData = {};
+
+  for (const email of EMAILS) {
+    console.log(`Processing leave for ${email}...`);
+    for (const date of nextWeekDates) {
+      console.log(`Processing leave for ${date.fullDate}...`);
+      try {
+        const razorpayResponse = await fetch(RAZORPAY_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            auth: RAZORPAY_AUTH,
+            request: {
+              type: "attendance",
+              "sub-type": "fetch",
+            },
+            data: {
+              email,
+              "employee-type": "employee",
+              date: date.fullDate,
+            },
+          }),
+        });
+
+        const { data } = await razorpayResponse.json();
+        console.log(data, date.fullDate, email);
+        if (
+          data &&
+          (data.status.description == "leave" ||
+            data.status.description == "half-day")
+        ) {
+          if (!leaveData[email]) {
+            leaveData[email] = [];
+          }
+          const leaveDescription =
+            data.status.description === "half-day" ? "Half-Day" : "";
+          leaveData[email].push({
+            ...date,
+            description: leaveDescription,
+          });
+        }
+      } catch (error) {
+        console.error(
+          `Error processing leave for ${email} on ${date.fullDate}:`,
+          error.message
+        );
+      }
+    }
+  }
+
+  const msg = `*${Object.keys(leaveData).length} ${
+    Object.keys(leaveData).length === 1 ? "Person" : "People"
+  } are on leave this week*`;
+
   const blocks = [
     {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*On Leave 🏖️*",
+        text: msg,
       },
     },
   ];
-  let isOnLeave = false;
-  for (const email of EMAILS) {
-    try {
-      const razorpayResponse = await fetch(RAZORPAY_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+
+  for (const email in leaveData) {
+    const user = EMAIL_MAP[email];
+    const dates = leaveData[email];
+    console.log(JSON.stringify(leaveData));
+
+    if (dates.length === 1) {
+      const description = dates[0].description;
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*${user}*: ${dates[0].formatted}, ${description}`,
         },
-        body: JSON.stringify({
-          auth: RAZORPAY_AUTH,
-          request: {
-            type: "attendance",
-            "sub-type": "fetch",
-          },
-          data: {
-            email,
-            "employee-type": "employee",
-            date: currentDate,
-          },
-        }),
       });
+    } else {
+      const startDate = dates[0].formatted;
+      const endDate = dates[dates.length - 1].formatted;
+      const description = dates[0].description;
 
-      const { data } = await razorpayResponse.json();
-
-      if (data && data.status.description == "leave") {
-        const message = `Attendance fetched for ${EMAIL_MAP[email]}:
-          Date: ${currentDate}
-          Status: ${JSON.stringify(data.status.description) || "Unknown"}`;
-        blocks.push({
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*${EMAIL_MAP[email]}*`,
-          },
-        });
-        isOnLeave = true;
-        console.log(message);
-      }
-    } catch (emailError) {
-      console.error(`Error processing email ${email}:`, emailError.message);
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*${user}*: ${startDate} - ${endDate}, ${description}`,
+        },
+      });
     }
   }
-  if (isOnLeave) {
-    try {
-      console.log("Sending Slack message...");
 
-      await axios.post(process.env.SLACK_API_URL, {
-        blocks: blocks,
-      });
+  if (Object.keys(leaveData).length > 0) {
+    try {
+      console.log("Sending Slack message...", blocks);
+
+      // await axios.post(process.env.SLACK_API_URL, {
+      //   blocks: blocks,
+      // });
     } catch (error) {
       console.error("Error sending Slack message:", error.message);
     }
+  } else {
+    console.log("No one is on leave next week.");
   }
 
-  console.log("Attendance processing completed.");
+  console.log("Weekly leave processing completed.");
 };
 
-cron.schedule("0 9 * * *", () => {
-  processAttendanceAndAnnounce();
-});
+// cron.schedule("0 9 * * 5", () => {
+// cron.schedule("0 9 * * 1,5", () => {
+processWeeklyLeaveAndAnnounce();
+// });
