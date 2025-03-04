@@ -1,138 +1,124 @@
 require("dotenv").config();
 const axios = require("axios");
 const cron = require("node-cron");
+const mongoose = require("mongoose");
 
-const RAZORPAY_API_URL = process.env.RAZORPAY_API_URL;
-const RAZORPAY_AUTH = {
-  id: process.env.RAZORPAY_AUTH_ID,
-  key: process.env.RAZORPAY_AUTH_KEY,
-};
+mongoose.connect("mongodb://localhost:27017/slack-leave-management", {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+});
 
-const EMAILS = [
-  "aleesha@become.team",
-  "harish@become.team",
-  "afridha@become.team",
-  "arun@become.team",
-  "arjun@become.team",
-  "ink@become.team",
-  "juhi@become.team",
-  "pooja@become.team",
-  "preksha@become.team",
-  "sam@become.team",
-  "sid@become.team",
-  "vasanth@become.team",
-  "vignesh@become.team",
-  "shri@become.team",
-  "arun.t@become.team",
-  "samuel@become.team",
-  "noothan@become.team",
-  "chandru@become.team",
-  "tarun@become.team",
+const leaveSchema = new mongoose.Schema({
+  user: String,
+  dates: { type: [Date], required: true },
+  reason: String,
+  status: { type: String, default: "Pending" },
+  leaveType: { type: String, required: true },
+  leaveDay: { type: [String], required: true },
+  leaveTime: { type: [String], required: true },
+});
+const Leave = mongoose.model("Leave", leaveSchema);
+
+const SLACK_IDS = [
+  "U047XMXC003", // Aleesha
+  "UB05U84LX", // Harish
+  "U05E5KBAT26", // Afridha
+  "U05UDFQ1Z7A", // Arun
+  "U07G1Q5A1KR", // Arjun
+  "US2CSJ89Y", // Indu
+  "U05F5TWC59B", // Juhi
+  "U02MCTN385A", // Pooja
+  "U022F2W0HHP", // Preksha
+  "U0145T9FDH8", // Sam
+  "U0146408Y2X", // Sid
+  "U05DT5SQ0BS", // Vasanth
+  "U017GUD4WAU", // Vignesh
+  "U05V8CF40AV", // Shri
+  "U07F37E4S12", // Arun T
+  "U01CN2WA1T2", // Samuel
+  "U05V8CGNQ65", // Noothan
+  "U071PMXGXRA", // Chandru
+  "U06SU8PPADN", // Tarun
+  "U06CGR4RPGV", // Gautham
+  "U06S83SJJUU", // Divya
+  "U086YFDFK9V", // Sree
 ];
 
-const EMAIL_MAP = {
-  "afridha@become.team": "Afridha",
-  "aleesha@become.team": "Aleesha",
-  "arun@become.team": "Sandeep",
-  "harish@become.team": "Harish",
-  "arjun@become.team": "Arjun",
-  "ink@become.team": "Indu",
-  "juhi@become.team": "Juhi",
-  "pooja@become.team": "Pooja",
-  "preksha@become.team": "Preksha",
-  "sam@become.team": "Samshritha",
-  "sid@become.team": "Sid",
-  "vasanth@become.team": "Vasanth",
-  "vignesh@become.team": "AV",
-  "shri@become.team": "Shri",
-  "arun.t@become.team": "Arun",
-  "samuel@become.team": "Samuel",
-  "noothan@become.team": "Noothan",
-  "chandru@become.team": "Chandru",
-  "tarun@become.team": "Tarun",
+const SLACK_MAP = {
+  U047XMXC003: "Aleesha",
+  UB05U84LX: "Harish",
+  U05E5KBAT26: "Afridha",
+  U05UDFQ1Z7A: "Arun",
+  U07G1Q5A1KR: "Arjun",
+  US2CSJ89Y: "Indu",
+  U05F5TWC59B: "Juhi",
+  U02MCTN385A: "Pooja",
+  U022F2W0HHP: "Preksha",
+  U0145T9FDH8: "Sam",
+  U0146408Y2X: "Sid",
+  U05DT5SQ0BS: "Vasanth",
+  U017GUD4WAU: "Vignesh",
+  U05V8CF40AV: "Shri",
+  U07F37E4S12: "Arun T",
+  U01CN2WA1T2: "Samuel",
+  U05V8CGNQ65: "Noothan",
+  U071PMXGXRA: "Chandru",
+  U06SU8PPADN: "Tarun",
+  U06CGR4RPGV: "Gautham",
+  U06S83SJJUU: "Divya",
+  U086YFDFK9V: "Sree",
 };
 
-const getCurrentDate = () => {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const getNextWeekDates = () => {
-  const dates = [];
+function getNextWeekDates() {
   const today = new Date();
-
+  const nextWeek = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() + 7
+  );
+  const dates = [];
   for (let i = 0; i < 7; i++) {
-    const nextDate = new Date(today);
-    nextDate.setDate(today.getDate() + i);
-
-    const year = nextDate.getFullYear();
-    const month = String(nextDate.getMonth() + 1).padStart(2, "0");
-    const day = String(nextDate.getDate()).padStart(2, "0");
-
+    const nextDate = new Date(
+      nextWeek.getFullYear(),
+      nextWeek.getMonth(),
+      nextWeek.getDate() + i
+    );
     dates.push({
-      fullDate: `${year}-${month}-${day}`,
-      formatted: `${day} ${nextDate.toLocaleString("default", {
+      fullDate: nextDate.toISOString().substring(0, 10),
+      formatted: `${nextDate.getDate()} ${nextDate.toLocaleString("default", {
         month: "short",
       })}, ${nextDate.toLocaleDateString("en-US", { weekday: "short" })}`,
     });
   }
   return dates;
-};
+}
 
 const processWeeklyLeaveAndAnnounce = async () => {
   const nextWeekDates = getNextWeekDates();
   const leaveData = {};
 
-  for (const email of EMAILS) {
-    console.log(`Processing leave for ${email}...`);
-    for (const date of nextWeekDates) {
-      console.log(`Processing leave for ${date.fullDate}...`);
-      try {
-        const razorpayResponse = await fetch(RAZORPAY_API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            auth: RAZORPAY_AUTH,
-            request: {
-              type: "attendance",
-              "sub-type": "fetch",
-            },
-            data: {
-              email,
-              "employee-type": "employee",
-              date: date.fullDate,
-            },
-          }),
-        });
+  for (const slackId of SLACK_IDS) {
+    console.log(`Processing leave for ${SLACK_MAP[slackId]}...`);
+    const leaves = await Leave.find({
+      user: slackId,
+      dates: { $in: nextWeekDates.map((d) => d.fullDate) },
+    });
 
-        const { data } = await razorpayResponse.json();
-        console.log(data, date.fullDate, email);
-        if (
-          data &&
-          (data.status.description == "leave" ||
-            data.status.description == "half-day")
-        ) {
-          if (!leaveData[email]) {
-            leaveData[email] = [];
-          }
-          const leaveDescription =
-            data.status.description === "half-day" ? "Half-Day" : "";
-          leaveData[email].push({
-            ...date,
-            description: leaveDescription,
-          });
-        }
-      } catch (error) {
-        console.error(
-          `Error processing leave for ${email} on ${date.fullDate}:`,
-          error.message
-        );
+    for (const leave of leaves) {
+      console.log(`Processing leave for ${leave.dates}...`);
+      if (!leaveData[slackId]) {
+        leaveData[slackId] = [];
       }
+      const description = leave.leaveDay;
+      leaveData[slackId].push({
+        dates: leave.dates.map((date) => ({
+          fullDate: date.toISOString().substring(0, 10),
+          formatted: `${date.getDate()} ${date.toLocaleString("default", {
+            month: "short",
+          })}, ${date.toLocaleDateString("en-US", { weekday: "short" })}`,
+        })),
+        description: description,
+      });
     }
   }
 
@@ -150,9 +136,9 @@ const processWeeklyLeaveAndAnnounce = async () => {
     },
   ];
 
-  for (const email in leaveData) {
-    const user = EMAIL_MAP[email];
-    const dates = leaveData[email];
+  for (const slackId in leaveData) {
+    const user = SLACK_MAP[slackId];
+    const dates = leaveData[slackId];
     console.log(JSON.stringify(leaveData));
 
     if (dates.length === 1) {
@@ -178,16 +164,24 @@ const processWeeklyLeaveAndAnnounce = async () => {
       });
     }
   }
-
+  console.log("Sending Slack message...", blocks);
   if (Object.keys(leaveData).length > 0) {
     try {
       console.log("Sending Slack message...", blocks);
 
       await axios.post(process.env.SLACK_API_URL, {
-        blocks: blocks,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "This is a test message to ensure the Slack integration is working correctly.",
+            },
+          },
+        ],
       });
     } catch (error) {
-      console.error("Error sending Slack message:", error.message);
+      console.error("Error sending Slack message:", error);
     }
   } else {
     console.log("No one is on leave next week.");
@@ -196,10 +190,9 @@ const processWeeklyLeaveAndAnnounce = async () => {
   console.log("Weekly leave processing completed.");
 };
 
-cron.schedule("0 9 * * 1,5", () => {
-  processWeeklyLeaveAndAnnounce()
-    .then(() => {})
-    .catch((error) => {
-      console.error(error);
-    });
-});
+processWeeklyLeaveAndAnnounce()
+  .then(() => {})
+  .catch((error) => {
+    console.error(error);
+  });
+cron.schedule("0 9 * * 1,5", () => {});
