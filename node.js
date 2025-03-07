@@ -135,7 +135,10 @@ async function sendSlackNotification(leaves) {
   try {
     console.log(blocks);
 
-    await axios.post(process.env.SLACK_API_URL, { blocks });
+    await axios.post(
+      "https://hooks.slack.com/services/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",
+      { blocks }
+    );
     console.log("Slack notification sent.");
   } catch (error) {
     console.error("Error sending Slack message:", error.message);
