@@ -93,7 +93,7 @@ async function sendSlackNotification(leaves) {
   const headingText =
     numberOfPeople === 1
       ? "1 person is on holiday"
-      : `${numberOfPeople} people are on holiday`;
+      : `${numberOfPeople} people are on Leave`;
 
   const blocks = [
     {
