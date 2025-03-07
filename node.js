@@ -4,9 +4,10 @@ const PORT = process.env.PORT || 3000;
 const mongoose = require("mongoose");
 const axios = require("axios");
 const cron = require("node-cron");
+require("dotenv").config();
 
-// MongoDB connection URL
-const MONGO_URL = "mongodb://localhost:27017/slack-leave-management";
+const MONGO_URL =
+  process.env.MONGO_URI || "mongodb://localhost:27017/slack-leave-management";
 
 mongoose
   .connect(MONGO_URL, {
@@ -26,7 +27,6 @@ const leaveSchema = new mongoose.Schema({
   leaveTime: { type: [String], required: true },
 });
 
-// Define the User schema
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true },
   slackId: { type: String, required: true },
@@ -43,7 +43,6 @@ const userSchema = new mongoose.Schema({
   internshipLeave: { type: Number, default: 0 },
 });
 
-// Create the Leave and User models
 const Leave = mongoose.model("Leave", leaveSchema);
 const User = mongoose.model("User", userSchema);
 
@@ -90,63 +89,72 @@ app.get("/leaves", async (req, res) => {
 });
 
 async function sendSlackNotification(leaves) {
-  const blocks = await Promise.all(
-    leaves.map(async (leave) => {
-      const user = await User.findOne({ slackId: leave.user }).exec();
-      const username = user ? user.username : leave.user;
-      let text;
-      if (
-        [
-          "Burnout_Leave",
-          "Bereavement_Leave",
-          "Maternity_Leave",
-          "Paternity_Leave",
-          "Compensatory_Leave",
-          "Work_from_Home",
-        ].includes(leave.leaveType)
-      ) {
-        const fromDate = new Date(leave.dates[0]);
-        const toDate = new Date(leave.dates[leave.dates.length - 1]);
-        text = `*${username}*:\n From date: ${fromDate.getDate()} ${fromDate
-          .toLocaleString("default", { month: "short" })
-          .toLowerCase()} \n To date: ${toDate.getDate()} ${toDate
-          .toLocaleString("default", { month: "short" })
-          .toLowerCase()}`;
-      } else {
-        text = `*${username}*:\n${leave.dates
-          .map((date, index) => {
-            const formattedDate = new Date(date);
-            return `${formattedDate.getDate()} ${formattedDate
-              .toLocaleString("default", { month: "short" })
-              .toLowerCase()} (${leave.leaveDay[index]})`;
-          })
-          .join("\n")}`;
-      }
-      return {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: text,
-        },
-      };
-    })
-  );
+  const numberOfPeople = leaves.length;
+  const headingText =
+    numberOfPeople === 1
+      ? "1 person is on holiday"
+      : `${numberOfPeople} people are on holiday`;
+
+  const blocks = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*${headingText}*`,
+      },
+    },
+    ...(await Promise.all(
+      leaves.map(async (leave) => {
+        const user = await User.findOne({ slackId: leave.user }).exec();
+        const username = user ? user.username : leave.user;
+        let text;
+        if (
+          [
+            "Burnout_Leave",
+            "Bereavement_Leave",
+            "Maternity_Leave",
+            "Paternity_Leave",
+            "Compensatory_Leave",
+            "Work_from_Home",
+          ].includes(leave.leaveType)
+        ) {
+          const fromDate = new Date(leave.dates[0]);
+          const toDate = new Date(leave.dates[leave.dates.length - 1]);
+          text = `*${username}*:\n From date: ${fromDate.getDate()} ${fromDate
+            .toLocaleString("default", { month: "short" })
+            .toLowerCase()} \n To date: ${toDate.getDate()} ${toDate
+            .toLocaleString("default", { month: "short" })
+            .toLowerCase()}`;
+        } else {
+          text = `*${username}*:\n${leave.dates
+            .map((date, index) => {
+              const formattedDate = new Date(date);
+              return `${formattedDate.getDate()} ${formattedDate
+                .toLocaleString("default", { month: "short" })
+                .toLowerCase()} (${leave.leaveDay[index]})`;
+            })
+            .join("\n")}`;
+        }
+        return {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: text,
+          },
+        };
+      })
+    )),
+  ];
 
   try {
-    console.log(blocks);
-
-    await axios.post(
-      "https://hooks.slack.com/services/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",
-      { blocks }
-    );
+    await axios.post(process.env.SLACK_API_URL, { blocks });
     console.log("Slack notification sent.");
   } catch (error) {
     console.error("Error sending Slack message:", error.message);
   }
 }
 
-// Schedule a cron job to run every Monday and Friday at 9:00 AM
-cron.schedule("* * * * *", async () => {
+cron.schedule("0 9 * * 1,5", async () => {
   console.log("Running scheduled task to send Slack notifications...");
   const today = new Date();
   const nextWeek = new Date(today);
@@ -176,7 +184,6 @@ cron.schedule("* * * * *", async () => {
   }
 });
 
-// Start the Express server
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
