@@ -51,11 +51,13 @@ app.use(express.json());
 app.get("/leaves", async (req, res) => {
   try {
     const today = new Date();
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 7);
+    const startOfToday = new Date(today);
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(today);
+    endOfToday.setHours(23, 59, 59, 999);
 
     const leaves = await Leave.find({
-      dates: { $gte: today, $lte: nextWeek },
+      dates: { $gte: startOfToday, $lte: endOfToday },
       status: "Approved",
     })
       .select("user dates reason status leaveType leaveDay leaveTime")
@@ -154,14 +156,16 @@ async function sendSlackNotification(leaves) {
   }
 }
 
-cron.schedule("0 9 * * 1,5", async () => {
+cron.schedule("0 9 * * *", async () => {
   console.log("Running scheduled task to send Slack notifications...");
   const today = new Date();
-  const nextWeek = new Date(today);
-  nextWeek.setDate(today.getDate() + 7);
+  const startOfToday = new Date(today);
+  startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(today);
+  endOfToday.setHours(23, 59, 59, 999);
 
   const leaves = await Leave.find({
-    dates: { $gte: today, $lte: nextWeek },
+    dates: { $gte: startOfToday, $lte: endOfToday },
     status: "Approved",
   })
     .select("user dates reason status leaveType leaveDay leaveTime")
