@@ -156,7 +156,7 @@ async function sendSlackNotification(leaves) {
   }
 }
 
-cron.schedule("0 9 * * *", async () => {
+cron.schedule("0 9 * * 1-5", async () => {
   console.log("Running scheduled task to send Slack notifications...");
   const today = new Date();
   const startOfToday = new Date(today);
